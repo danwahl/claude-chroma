@@ -1,0 +1,11 @@
+data/
+!data/.gitkeep
+chroma_data/
+!chroma_data/.gitkeep
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
