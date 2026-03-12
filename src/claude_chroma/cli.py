@@ -14,15 +14,15 @@ from claude_chroma.ingest import ingest as run_ingest
 app = typer.Typer(help="Ingest Claude conversation exports into ChromaDB.")
 console = Console()
 
-DEFAULT_DATA_DIR = Path("./data")
+DEFAULT_CLAUDE_DIR = Path("./claude_data")
 DEFAULT_CHROMA_DIR = Path("./chroma_data")
 DEFAULT_COLLECTION = "claude_conversations"
 
 
 @app.command()
 def ingest(
-    data_dir: Path = typer.Option(
-        DEFAULT_DATA_DIR, help="Directory containing JSON exports"
+    claude_dir: Path = typer.Option(
+        DEFAULT_CLAUDE_DIR, help="Directory containing JSON exports"
     ),
     chroma_dir: Path = typer.Option(
         DEFAULT_CHROMA_DIR, help="ChromaDB storage directory"
@@ -30,7 +30,7 @@ def ingest(
 ) -> None:
     """Ingest all conversation exports into ChromaDB."""
     logging.basicConfig(level=logging.INFO)
-    stats = run_ingest(data_dir=data_dir, chroma_dir=chroma_dir)
+    stats = run_ingest(claude_dir=claude_dir, chroma_dir=chroma_dir)
 
     console.print()
     console.print("[bold green]Ingestion complete![/]")

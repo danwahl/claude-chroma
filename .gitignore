@@ -1,5 +1,5 @@
-data/
-!data/.gitkeep
+claude_data/
+!claude_data/.gitkeep
 chroma_data/
 !chroma_data/.gitkeep
 .venv/

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Ingest Claude AI conversation exports into a local ChromaDB vector database for semantic search"
 readme = "README.md"
 authors = [
-    { name = "Dan Wahl", email = "drwahl@gmail.com" }
+    { name = "Dan Wahl", email = "hi@danwahl.net" }
 ]
 requires-python = ">=3.11"
 dependencies = [

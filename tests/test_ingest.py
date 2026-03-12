@@ -7,34 +7,44 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-import chromadb
+from chromadb.api import ClientAPI
+from chromadb.api.models.Collection import Collection
 
-from claude_chroma.ingest import ingest
+from claude_chroma.ingest import IngestStats, ingest
+
+_counter = 0
 
 
-def _ingest_with_ephemeral(data_dir: Path, client: Any) -> Any:
+def _ingest_with_ephemeral(
+    claude_dir: Path,
+    client: ClientAPI,
+    collection_name: str | None = None,
+) -> tuple[IngestStats, Collection]:
     """Run ingest using an ephemeral client."""
-    collection_name = "test_conversations"
+    if collection_name is None:
+        global _counter  # noqa: PLW0603
+        _counter += 1
+        collection_name = f"test_conv_{_counter}"
     with patch("claude_chroma.ingest._get_collection") as mock_gc:
         collection = client.get_or_create_collection(
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
         mock_gc.return_value = (client, collection)
-        stats = ingest(data_dir=data_dir, collection_name=collection_name)
+        stats = ingest(claude_dir=claude_dir, collection_name=collection_name)
     return stats, collection
 
 
 def test_ingest_single_file(
     tmp_path: Path,
     sample_conversation: dict[str, Any],
-    chroma_client: Any,
+    chroma_client: ClientAPI,
 ) -> None:
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    (data_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    claude_dir = tmp_path / "claude_data"
+    claude_dir.mkdir()
+    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
 
-    stats, collection = _ingest_with_ephemeral(data_dir, chroma_client)
+    stats, collection = _ingest_with_ephemeral(claude_dir, chroma_client)
 
     assert stats.files_processed == 1
     assert stats.conversations_processed == 1
@@ -42,18 +52,39 @@ def test_ingest_single_file(
     assert collection.count() == 3
 
 
+def test_ingest_subdirectory(
+    tmp_path: Path,
+    sample_conversation: dict[str, Any],
+    chroma_client: ClientAPI,
+) -> None:
+    """JSON files in subdirectories should also be discovered."""
+    # Use a unique UUID so dedup doesn't skip it
+    sample_conversation = dict(sample_conversation, uuid="conv-subdir")
+    claude_dir = tmp_path / "claude_data"
+    subdir = claude_dir / "2024"
+    subdir.mkdir(parents=True)
+    (subdir / "conv.json").write_text(json.dumps([sample_conversation]))
+
+    stats, collection = _ingest_with_ephemeral(claude_dir, chroma_client)
+
+    assert stats.files_processed == 1
+    assert stats.conversations_processed == 1
+    assert collection.count() == 3
+
+
 def test_upsert_idempotency(
     tmp_path: Path,
     sample_conversation: dict[str, Any],
-    chroma_client: Any,
+    chroma_client: ClientAPI,
 ) -> None:
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    (data_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    claude_dir = tmp_path / "claude_data"
+    claude_dir.mkdir()
+    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
 
-    # Ingest twice
-    _ingest_with_ephemeral(data_dir, chroma_client)
-    stats2, collection = _ingest_with_ephemeral(data_dir, chroma_client)
+    # Ingest twice with same collection
+    name = "test_idempotency"
+    _ingest_with_ephemeral(claude_dir, chroma_client, name)
+    stats2, collection = _ingest_with_ephemeral(claude_dir, chroma_client, name)
 
     # Second run should skip the conversation
     assert stats2.conversations_skipped == 1
@@ -64,19 +95,20 @@ def test_upsert_idempotency(
 def test_updated_export_replaces(
     tmp_path: Path,
     sample_conversation: dict[str, Any],
-    chroma_client: Any,
+    chroma_client: ClientAPI,
 ) -> None:
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    (data_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    claude_dir = tmp_path / "claude_data"
+    claude_dir.mkdir()
+    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
 
-    _ingest_with_ephemeral(data_dir, chroma_client)
+    name = "test_updated"
+    _ingest_with_ephemeral(claude_dir, chroma_client, name)
 
     # Update the conversation with a later timestamp
     sample_conversation["updated_at"] = "2024-12-01T00:00:00Z"
-    (data_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
 
-    stats2, collection = _ingest_with_ephemeral(data_dir, chroma_client)
+    stats2, collection = _ingest_with_ephemeral(claude_dir, chroma_client, name)
     assert stats2.conversations_processed == 1
     assert stats2.conversations_skipped == 0
 
@@ -84,13 +116,13 @@ def test_updated_export_replaces(
 def test_stats_reported(
     tmp_path: Path,
     sample_conversation: dict[str, Any],
-    chroma_client: Any,
+    chroma_client: ClientAPI,
 ) -> None:
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    (data_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    claude_dir = tmp_path / "claude_data"
+    claude_dir.mkdir()
+    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
 
-    stats, _ = _ingest_with_ephemeral(data_dir, chroma_client)
+    stats, _ = _ingest_with_ephemeral(claude_dir, chroma_client)
     assert stats.elapsed_seconds > 0
     assert stats.errors == []
 
@@ -98,13 +130,13 @@ def test_stats_reported(
 def test_search_returns_results(
     tmp_path: Path,
     sample_conversation: dict[str, Any],
-    chroma_client: Any,
+    chroma_client: ClientAPI,
 ) -> None:
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    (data_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    claude_dir = tmp_path / "claude_data"
+    claude_dir.mkdir()
+    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
 
-    _, collection = _ingest_with_ephemeral(data_dir, chroma_client)
+    _, collection = _ingest_with_ephemeral(claude_dir, chroma_client)
 
     results = collection.query(query_texts=["Python programming"], n_results=2)
     assert len(results["ids"][0]) > 0

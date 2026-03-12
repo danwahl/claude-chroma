@@ -8,6 +8,7 @@ from typing import Any
 
 import chromadb
 import pytest
+from chromadb.api import ClientAPI
 
 
 def _make_message(
@@ -128,7 +129,7 @@ def non_text_conversation() -> dict[str, Any]:
 
 
 @pytest.fixture
-def chroma_client() -> Any:
+def chroma_client() -> ClientAPI:
     """Ephemeral in-memory ChromaDB client."""
     return chromadb.EphemeralClient()
 

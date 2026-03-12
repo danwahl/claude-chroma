@@ -15,8 +15,8 @@ git clone https://github.com/danwahl/claude-chroma.git
 cd claude-chroma
 uv sync
 
-# Drop your Claude export(s) into data/
-cp ~/Downloads/conversations.json data/
+# Drop your Claude export(s) into claude_data/
+cp ~/Downloads/conversations.json claude_data/
 
 # Ingest into ChromaDB
 uv run claude-chroma ingest
@@ -53,11 +53,11 @@ Claude will then be able to query your full conversation history via the `chroma
 
 ### `claude-chroma ingest`
 
-Ingest all `.json` exports from the data directory into ChromaDB.
+Ingest all `.json` exports from the Claude data directory (including subdirectories) into ChromaDB.
 
 ```
 Options:
-  --data-dir PATH    Directory containing JSON exports [default: ./data]
+  --claude-dir PATH  Directory containing JSON exports [default: ./claude_data]
   --chroma-dir PATH  ChromaDB storage directory [default: ./chroma_data]
 ```
 

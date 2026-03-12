@@ -6,9 +6,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import chromadb
+from chromadb.api import ClientAPI
+from chromadb.api.models.Collection import Collection
 from rich.progress import Progress
 
 from claude_chroma.chunk import Chunk, chunk_conversation
@@ -33,7 +34,7 @@ class IngestStats:
 
 def _get_collection(
     chroma_dir: Path, collection_name: str
-) -> tuple[Any, Any]:
+) -> tuple[ClientAPI, Collection]:
     """Get or create a ChromaDB collection."""
     client = chromadb.PersistentClient(path=str(chroma_dir))
     collection = client.get_or_create_collection(
@@ -43,7 +44,7 @@ def _get_collection(
     return client, collection
 
 
-def _existing_updated_at(collection: Any, conversation_id: str) -> str | None:
+def _existing_updated_at(collection: Collection, conversation_id: str) -> str | None:
     """Check if conversation already exists and return its updated_at."""
     results = collection.get(
         where={"conversation_id": conversation_id},
@@ -57,7 +58,7 @@ def _existing_updated_at(collection: Any, conversation_id: str) -> str | None:
     return None
 
 
-def _upsert_chunks(collection: Any, chunks: list[Chunk]) -> None:
+def _upsert_chunks(collection: Collection, chunks: list[Chunk]) -> None:
     """Upsert chunks into ChromaDB in batches."""
     for i in range(0, len(chunks), BATCH_SIZE):
         batch = chunks[i : i + BATCH_SIZE]
@@ -69,17 +70,17 @@ def _upsert_chunks(collection: Any, chunks: list[Chunk]) -> None:
 
 
 def ingest(
-    data_dir: Path = Path("./data"),
+    claude_dir: Path = Path("./claude_data"),
     chroma_dir: Path = Path("./chroma_data"),
     collection_name: str = "claude_conversations",
 ) -> IngestStats:
-    """Ingest all conversation exports from data_dir into ChromaDB."""
+    """Ingest all conversation exports from claude_dir into ChromaDB."""
     start = time.monotonic()
     stats = IngestStats()
 
-    json_files = sorted(data_dir.glob("*.json"))
+    json_files = sorted(claude_dir.glob("**/*.json"))
     if not json_files:
-        logger.warning("No JSON files found in %s", data_dir)
+        logger.warning("No JSON files found in %s", claude_dir)
         return stats
 
     _, collection = _get_collection(chroma_dir, collection_name)
