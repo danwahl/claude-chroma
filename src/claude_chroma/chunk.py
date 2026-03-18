@@ -9,6 +9,9 @@ from claude_chroma.parse import Conversation, Message
 MAX_CHUNK_CHARS = 2000
 OVERLAP_CHARS = 200
 SEPARATORS = ["\n\n", "\n", ". ", " "]
+# Truncation limit for the human_message metadata field. Kept short to
+# avoid bloating ChromaDB metadata; the full text is in the chunk body.
+MAX_HUMAN_MESSAGE_META = 500
 
 
 @dataclass
@@ -179,7 +182,9 @@ def _make_chunk(
             "conversation_updated_at": conv.updated_at,
             "turn_index": turn_index,
             "human_message": (
-                first_msg.text[:500] if first_msg.sender == "human" else ""
+                first_msg.text[:MAX_HUMAN_MESSAGE_META]
+                if first_msg.sender == "human"
+                else ""
             ),
             "sender": sender,
             "created_at": first_msg.created_at,

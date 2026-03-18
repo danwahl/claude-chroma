@@ -68,7 +68,7 @@ def stats(
     if count == 0:
         return
 
-    # Get all metadata to compute stats
+    # TODO: For very large databases, consider paginated fetching
     result = collection.get(include=["metadatas"])
     metadatas = result["metadatas"] or []
 

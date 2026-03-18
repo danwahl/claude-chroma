@@ -44,18 +44,32 @@ def _get_collection(
     return client, collection
 
 
-def _existing_updated_at(collection: Collection, conversation_id: str) -> str | None:
-    """Check if conversation already exists and return its updated_at."""
-    results = collection.get(
-        where={"conversation_id": conversation_id},
-        limit=1,
-        include=["metadatas"],
-    )
-    if results["ids"]:
-        metadatas = results["metadatas"]
-        if metadatas:
-            return str(metadatas[0].get("conversation_updated_at", ""))
-    return None
+def _load_existing_timestamps(
+    collection: Collection,
+) -> dict[str, str]:
+    """Load all conversation updated_at timestamps from the collection.
+
+    Returns a dict mapping conversation_id to its latest
+    conversation_updated_at value. On an empty collection this
+    returns an empty dict without issuing any query.
+    """
+    if collection.count() == 0:
+        return {}
+
+    results = collection.get(include=["metadatas"])
+    metadatas = results["metadatas"] or []
+
+    timestamps: dict[str, str] = {}
+    for meta in metadatas:
+        cid = str(meta.get("conversation_id", ""))
+        updated = str(meta.get("conversation_updated_at", ""))
+        if cid and updated:
+            # Keep the latest timestamp seen for each conversation
+            existing = timestamps.get(cid, "")
+            if updated > existing:
+                timestamps[cid] = updated
+
+    return timestamps
 
 
 def _upsert_chunks(collection: Collection, chunks: list[Chunk]) -> None:
@@ -85,15 +99,18 @@ def ingest(
 
     _, collection = _get_collection(chroma_dir, collection_name)
 
+    # Load existing timestamps once upfront instead of querying
+    # per-conversation, which is slow at scale.
+    existing_ts = _load_existing_timestamps(collection)
+
     with Progress() as progress:
         for json_file in json_files:
-            task = progress.add_task(f"[cyan]{json_file.name}", total=None)
+            task = progress.add_task(f"[cyan]{json_file.name}", total=1)
             stats.files_processed += 1
 
             try:
                 for conversation in parse_export(json_file):
-                    # Check deduplication
-                    existing = _existing_updated_at(collection, conversation.uuid)
+                    existing = existing_ts.get(conversation.uuid)
                     if existing and existing >= conversation.updated_at:
                         stats.conversations_skipped += 1
                         continue
@@ -102,13 +119,16 @@ def ingest(
                     if chunks:
                         _upsert_chunks(collection, chunks)
                         stats.chunks_created += len(chunks)
+                        # Update cache so later files in the same
+                        # run see this conversation as ingested.
+                        existing_ts[conversation.uuid] = conversation.updated_at
                     stats.conversations_processed += 1
             except Exception as e:
                 msg = f"Error processing {json_file.name}: {e}"
                 logger.error(msg)
                 stats.errors.append(msg)
 
-            progress.update(task, completed=True)
+            progress.update(task, completed=1)
 
     stats.elapsed_seconds = time.monotonic() - start
     return stats
