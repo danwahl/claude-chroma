@@ -1,17 +1,21 @@
 [project]
 name = "claude-chroma"
-version = "0.1.1"
+version = "0.1.2"
 description = "Ingest Claude AI conversation exports into a local ChromaDB vector database for semantic search"
 readme = "README.md"
 authors = [
     { name = "Dan Wahl", email = "hi@danwahl.net" }
 ]
 requires-python = ">=3.11"
+license = "MIT"
 dependencies = [
     "chromadb",
     "typer[all]",
     "rich",
 ]
+
+[project.urls]
+Repository = "https://github.com/danwahl/claude-chroma"
 
 [project.scripts]
 claude-chroma = "claude_chroma.cli:app"
