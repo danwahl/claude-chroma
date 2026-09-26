@@ -53,7 +53,7 @@ Claude will then be able to query your full conversation history via the `chroma
 
 ### `claude-chroma ingest`
 
-Ingest all `.json` exports from the Claude data directory (including subdirectories) into ChromaDB.
+Ingest every `conversations.json` in the Claude data directory (including subdirectories) into ChromaDB. Other export files (manifests, projects, artifacts) are ignored.
 
 ```
 Options:
@@ -85,7 +85,7 @@ Options:
 
 ## Chunking Strategy
 
-Conversations are chunked at the **exchange level** — each human message is paired with the subsequent assistant response. This preserves the question + answer arc as a single semantic unit. Long assistant responses (>2000 characters) are split with overlap, with the human message prepended as context to each sub-chunk.
+Conversations are chunked at the **exchange level** — each human message is paired with the subsequent assistant response. This preserves the question + answer arc as a single semantic unit. Long exchanges (>2000 characters) are split with overlap as one continuous text, so the human message appears once at the start; every sub-chunk carries the human message (first 500 characters) in its `human_message` metadata for context.
 
 Chunk IDs are deterministic (`{conversation_uuid}:{turn_index}`), so re-ingesting the same export is a no-op, and updated exports overwrite stale data.
 

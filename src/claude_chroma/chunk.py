@@ -10,7 +10,8 @@ MAX_CHUNK_CHARS = 2000
 OVERLAP_CHARS = 200
 SEPARATORS = ["\n\n", "\n", ". ", " "]
 # Truncation limit for the human_message metadata field. Kept short to
-# avoid bloating ChromaDB metadata; the full text is in the chunk body.
+# avoid bloating ChromaDB metadata; the full text is in the first chunk(s)
+# of the exchange.
 MAX_HUMAN_MESSAGE_META = 500
 
 
@@ -23,36 +24,43 @@ class Chunk:
     metadata: dict[str, str | int]
 
 
+def _split_pieces(text: str, max_chars: int, separators: list[str]) -> list[str]:
+    """Break text into pieces of at most max_chars, using the coarsest
+    separator that works. Separators stay attached, so the pieces
+    concatenate back to the original text."""
+    if len(text) <= max_chars:
+        return [text]
+    for i, sep in enumerate(separators):
+        if sep not in text:
+            continue
+        parts = text.split(sep)
+        pieces = [part + sep for part in parts[:-1]] + [parts[-1]]
+        return [
+            sub
+            for piece in pieces
+            if piece
+            for sub in _split_pieces(piece, max_chars, separators[i + 1 :])
+        ]
+    # Last resort: hard split by character
+    return [text[j : j + max_chars] for j in range(0, len(text), max_chars)]
+
+
 def _recursive_split(text: str, max_chars: int, overlap: int) -> list[str]:
-    """Split text recursively using progressively finer separators."""
+    """Split text into chunks of at most max_chars, preferring natural
+    boundaries and repeating up to `overlap` chars between chunks."""
     if len(text) <= max_chars:
         return [text]
 
-    for sep in SEPARATORS:
-        parts = text.split(sep)
-        if len(parts) == 1:
-            continue
-
-        chunks: list[str] = []
-        current = parts[0]
-        for part in parts[1:]:
-            candidate = current + sep + part
-            if len(candidate) <= max_chars:
-                current = candidate
-            else:
-                chunks.append(current)
-                # Add overlap from end of previous chunk
-                if overlap > 0 and len(current) > overlap:
-                    current = current[-overlap:] + sep + part
-                else:
-                    current = part
-        chunks.append(current)
-        return chunks
-
-    # Last resort: hard split by character
-    chunks = []
-    for i in range(0, len(text), max_chars - overlap):
-        chunks.append(text[i : i + max_chars])
+    chunks: list[str] = []
+    current = ""
+    for piece in _split_pieces(text, max_chars, SEPARATORS):
+        if current and len(current) + len(piece) > max_chars:
+            chunks.append(current)
+            # Carry overlap from the end of the previous chunk if it fits
+            tail = current[-overlap:] if overlap > 0 else ""
+            current = tail if len(tail) + len(piece) <= max_chars else ""
+        current += piece
+    chunks.append(current)
     return chunks
 
 
@@ -77,35 +85,34 @@ def chunk_conversation(conversation: Conversation) -> list[Chunk]:
 
             if assistant_texts:
                 assistant_text = "\n\n".join(assistant_texts)
-                _make_exchange_chunks(
-                    chunks, conversation, human_msg, assistant_text, turn_index
+                _make_text_chunks(
+                    chunks,
+                    conversation,
+                    human_msg,
+                    f"Human: {human_msg.text}\n\nAssistant: {assistant_text}",
+                    turn_index,
+                    "exchange",
                 )
             else:
                 # Solo human message
-                chunks.append(
-                    _make_chunk(
-                        conversation,
-                        turn_index,
-                        None,
-                        f"Human: {human_msg.text}",
-                        human_msg,
-                        "human_solo",
-                        "full_exchange",
-                    )
+                _make_text_chunks(
+                    chunks,
+                    conversation,
+                    human_msg,
+                    f"Human: {human_msg.text}",
+                    turn_index,
+                    "human_solo",
                 )
             i = j
         else:
             # Solo assistant message (no preceding human)
-            chunks.append(
-                _make_chunk(
-                    conversation,
-                    turn_index,
-                    None,
-                    f"Assistant: {msg.text}",
-                    msg,
-                    "assistant_solo",
-                    "full_exchange",
-                )
+            _make_text_chunks(
+                chunks,
+                conversation,
+                msg,
+                f"Assistant: {msg.text}",
+                turn_index,
+                "assistant_solo",
             )
             i += 1
 
@@ -114,48 +121,33 @@ def chunk_conversation(conversation: Conversation) -> list[Chunk]:
     return chunks
 
 
-def _make_exchange_chunks(
+def _make_text_chunks(
     chunks: list[Chunk],
     conv: Conversation,
-    human_msg: Message,
-    assistant_text: str,
+    first_msg: Message,
+    text: str,
     turn_index: int,
+    sender: str,
 ) -> None:
-    """Create chunks for a human+assistant exchange, splitting if needed."""
-    full_text = f"Human: {human_msg.text}\n\nAssistant: {assistant_text}"
+    """Append chunks for one turn's text, splitting it if needed.
 
-    if len(full_text) <= MAX_CHUNK_CHARS:
+    Split pieces are cut from the text as one continuous stream; the human
+    message is carried in each chunk's human_message metadata for context.
+    """
+    if len(text) <= MAX_CHUNK_CHARS:
         chunks.append(
             _make_chunk(
-                conv,
-                turn_index,
-                None,
-                full_text,
-                human_msg,
-                "exchange",
-                "full_exchange",
+                conv, turn_index, None, text, first_msg, sender, "full_exchange"
             )
         )
-    else:
-        # Split the assistant text, prepending human context to each
-        prefix = f"Human: {human_msg.text}\n\nAssistant: "
-        available = MAX_CHUNK_CHARS - len(prefix)
-        if available < 100:
-            available = 100  # Ensure minimum chunk size
-        parts = _recursive_split(assistant_text, available, OVERLAP_CHARS)
-        for sub_index, part in enumerate(parts):
-            chunk_text = prefix + part
-            chunks.append(
-                _make_chunk(
-                    conv,
-                    turn_index,
-                    sub_index,
-                    chunk_text,
-                    human_msg,
-                    "exchange",
-                    "split_exchange",
-                )
+        return
+    parts = _recursive_split(text, MAX_CHUNK_CHARS, OVERLAP_CHARS)
+    for sub_index, part in enumerate(parts):
+        chunks.append(
+            _make_chunk(
+                conv, turn_index, sub_index, part, first_msg, sender, "split_exchange"
             )
+        )
 
 
 def _make_chunk(

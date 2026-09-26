@@ -42,7 +42,7 @@ def test_ingest_single_file(
 ) -> None:
     claude_dir = tmp_path / "claude_data"
     claude_dir.mkdir()
-    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "conversations.json").write_text(json.dumps([sample_conversation]))
 
     stats, collection = _ingest_with_ephemeral(claude_dir, chroma_client)
 
@@ -63,7 +63,28 @@ def test_ingest_subdirectory(
     claude_dir = tmp_path / "claude_data"
     subdir = claude_dir / "2024"
     subdir.mkdir(parents=True)
-    (subdir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (subdir / "conversations.json").write_text(json.dumps([sample_conversation]))
+
+    stats, collection = _ingest_with_ephemeral(claude_dir, chroma_client)
+
+    assert stats.files_processed == 1
+    assert stats.conversations_processed == 1
+    assert collection.count() == 3
+
+
+def test_ingest_ignores_other_export_files(
+    tmp_path: Path,
+    sample_conversation: dict[str, Any],
+    chroma_client: ClientAPI,
+) -> None:
+    """Manifests, projects, and other export JSON should not be parsed."""
+    sample_conversation = dict(sample_conversation, uuid="conv-other-files")
+    claude_dir = tmp_path / "claude_data"
+    (claude_dir / "projects").mkdir(parents=True)
+    (claude_dir / "conversations.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "manifest-abc.json").write_text(json.dumps({"data_files": []}))
+    (claude_dir / "users.json").write_text(json.dumps([{"uuid": "u1"}]))
+    (claude_dir / "projects" / "p1.json").write_text(json.dumps({"uuid": "p1"}))
 
     stats, collection = _ingest_with_ephemeral(claude_dir, chroma_client)
 
@@ -79,7 +100,7 @@ def test_upsert_idempotency(
 ) -> None:
     claude_dir = tmp_path / "claude_data"
     claude_dir.mkdir()
-    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "conversations.json").write_text(json.dumps([sample_conversation]))
 
     # Ingest twice with same collection
     name = "test_idempotency"
@@ -99,14 +120,14 @@ def test_updated_export_replaces(
 ) -> None:
     claude_dir = tmp_path / "claude_data"
     claude_dir.mkdir()
-    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "conversations.json").write_text(json.dumps([sample_conversation]))
 
     name = "test_updated"
     _ingest_with_ephemeral(claude_dir, chroma_client, name)
 
     # Update the conversation with a later timestamp
     sample_conversation["updated_at"] = "2024-12-01T00:00:00Z"
-    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "conversations.json").write_text(json.dumps([sample_conversation]))
 
     stats2, collection = _ingest_with_ephemeral(claude_dir, chroma_client, name)
     assert stats2.conversations_processed == 1
@@ -120,7 +141,7 @@ def test_stats_reported(
 ) -> None:
     claude_dir = tmp_path / "claude_data"
     claude_dir.mkdir()
-    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "conversations.json").write_text(json.dumps([sample_conversation]))
 
     stats, _ = _ingest_with_ephemeral(claude_dir, chroma_client)
     assert stats.elapsed_seconds > 0
@@ -134,7 +155,7 @@ def test_search_returns_results(
 ) -> None:
     claude_dir = tmp_path / "claude_data"
     claude_dir.mkdir()
-    (claude_dir / "conv.json").write_text(json.dumps([sample_conversation]))
+    (claude_dir / "conversations.json").write_text(json.dumps([sample_conversation]))
 
     _, collection = _ingest_with_ephemeral(claude_dir, chroma_client)
 

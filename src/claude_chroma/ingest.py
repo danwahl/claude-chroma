@@ -92,9 +92,11 @@ def ingest(
     start = time.monotonic()
     stats = IngestStats()
 
-    json_files = sorted(claude_dir.glob("**/*.json"))
+    # Exports also contain manifests, projects, artifacts, etc.; only
+    # conversations.json holds chat history.
+    json_files = sorted(claude_dir.glob("**/conversations.json"))
     if not json_files:
-        logger.warning("No JSON files found in %s", claude_dir)
+        logger.warning("No conversations.json files found in %s", claude_dir)
         return stats
 
     _, collection = _get_collection(chroma_dir, collection_name)
