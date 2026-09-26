@@ -89,6 +89,15 @@ Conversations are chunked at the **exchange level** — each human message is pa
 
 Chunk IDs are deterministic (`{conversation_uuid}:{turn_index}`), so re-ingesting the same export is a no-op, and updated exports overwrite stale data.
 
+## Upgrading from 0.1.x
+
+0.2.0 changes how long exchanges are chunked. Ingest skips conversations that are already stored, so rebuild the database to pick up the new chunks:
+
+```bash
+rm -rf chroma_data/*
+uv run claude-chroma ingest
+```
+
 ## License
 
 MIT

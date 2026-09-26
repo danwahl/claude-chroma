@@ -1,6 +1,6 @@
 [project]
 name = "claude-chroma"
-version = "0.1.2"
+version = "0.2.0"
 description = "Ingest Claude AI conversation exports into a local ChromaDB vector database for semantic search"
 readme = "README.md"
 authors = [
