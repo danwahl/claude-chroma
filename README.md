@@ -38,6 +38,7 @@ Add the official `chroma-mcp` server to your `claude_desktop_config.json`:
     "chroma": {
       "command": "uvx",
       "args": [
+        "--with", "pydantic<2.14",
         "chroma-mcp",
         "--client-type", "persistent",
         "--data-dir", "/absolute/path/to/claude-chroma/chroma_data"
@@ -48,6 +49,8 @@ Add the official `chroma-mcp` server to your `claude_desktop_config.json`:
 ```
 
 Claude will then be able to query your full conversation history via the `chroma` MCP tool.
+
+The `--with "pydantic<2.14"` argument works around a startup crash (`ImportError: cannot import name 'eval_type_backport'`): `chroma-mcp` 0.2.6 pins `mcp==1.6.0`, which is incompatible with pydantic 2.14+. It can be dropped once [chroma-core/chroma-mcp#88](https://github.com/chroma-core/chroma-mcp/pull/88) or an equivalent fix is released.
 
 ## CLI Reference
 
